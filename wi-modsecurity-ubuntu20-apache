@@ -1,0 +1,83 @@
+============================================================
+Update System
+  290  apt update
+  291  apt upgrade -y
+  292  reboot
+  
+Clone ModSecurity Repsoitory from Github
+  293  apt install git -y
+  294  git clone --depth 1 -b v3/master --single-branch https://github.com/SpiderLabs/ModSecurity /usr/local/src/ModSecurity/
+  295  cd /usr/local/src/ModSecurity/
+  296  apt install gcc make build-essential autoconf automake libtool libcurl4-openssl-dev liblua5.3-dev libfuzzy-dev ssdeep gettext pkg-config libpcre3 libpcre3-dev libxml2 libxml2-dev libcurl4 libgeoip-dev libyajl-dev doxygen -y
+  297  git submodule init
+  298  git submodule update
+  
+Building the ModSecurity Environment
+  299  ./build.sh
+  300  ./configure
+  
+Compiling the ModSecurity Source Code
+  301  make
+  302  make install
+  
+Install ModSecurity-apache Connector
+  303  git clone --depth 1 https://github.com/SpiderLabs/ModSecurity-apache.git /usr/local/src/ModSecurity-apache/
+  304  cd /usr/local/src/ModSecurity-apache/
+  305  ./autogen.sh
+  309  apt install apache2-dev -y
+  310  ./autogen.sh
+  315  ./configure --with-libmodsecurity=/usr/local/ModSecurity/
+  316  ./configure --with-libmodsecurity=/usr/local/modsecurity/
+  317  make
+  318  make install
+
+Setup Modsecurity 3 in Apache (HTTPD)
+  319  echo "LoadModule security3_module /usr/lib/apache2/modules/mod_security3.so" | sudo tee -a /etc/apache2/apache2.conf
+  320  vim /etc/apache2/apache2.conf
+  321  mkdir /etc/apache2/modsecurity.d
+  323  cp /usr/local/src/ModSecurity/modsecurity.conf-recommended /etc/apache2/modsecurity.d/modsecurity.conf
+  324  cp /usr/local/src/ModSecurity/unicode.mapping /etc/apache2/modsecurity.d/
+  325  sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/modsecurity/modsecurity.conf
+  326  vim /etc/apache2/modsecurity.d/modsecurity.conf
+  327  etc/apache2/modsecurity.d/modsec_rules.conf
+  328  vim /etc/apache2/modsecurity.d/modsec_rules.conf
+  329  cat > /etc/apache2/modsecurity.d/modsec_rules.conf << 'EOL'
+  330  Include /etc/apache2/modsecurity.d/modsecurity.conf
+  331  Include /etc/apache2/modsecurity.d/owasp-crs/crs-setup.conf
+  332  Include /etc/apache2/modsecurity.d/owasp-crs/rules/*.conf
+  333  EOL
+  334  git clone https://github.com/SpiderLabs/owasp-modsecurity-crs.git /etc/apache2/modsecurity.d/owasp-crs
+  335  cp /etc/apache2/modsecurity.d/owasp-crs/crs-setup.conf{.example,}
+  336  cd /etc/apache2/modsecurity.d/
+  337  ls
+  338  cd owasp-crs/
+  339  ls
+  340  vim /etc/apache2/modsecurity.d/owasp-crs/crs-setup.conf
+		...
+		#SecDefaultAction "phase:1,log,auditlog,pass"
+		#SecDefaultAction "phase:2,log,auditlog,pass"
+
+		...
+		#
+		SecDefaultAction "phase:1,log,auditlog,deny,status:403"
+		SecDefaultAction "phase:2,log,auditlog,deny,status:403"
+		...
+	
+
+  343  cd sites-enabled/
+  348  vim 000-default.conf
+	cat > /etc/apache2/sites-available/000-default.conf << 'EOL'
+<VirtualHost *:80>
+	modsecurity on
+	modsecurity_rules_file /etc/apache2/modsecurity.d/modsec_rules.conf 
+	ServerAdmin webmaster@localhost
+	DocumentRoot /var/www/html
+	ErrorLog ${APACHE_LOG_DIR}/error.log
+	CustomLog ${APACHE_LOG_DIR}/access.log combined
+</VirtualHost>
+EOL
+
+  349  apachectl -t
+  380  systemctl restart apache2
+  381  curl localhost?doc=/bin/ls
+  382  tail /var/log/modsec_audit.log
